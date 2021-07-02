@@ -40,7 +40,7 @@ export const generatePDFReadableStream = (title,img,data1,data2) => {
                 {
                     image:img,
                     width:500,
-                    height:500,
+                    height:250,
                     margin:[0,10,0,10]
                 },
             
