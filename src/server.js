@@ -11,7 +11,8 @@ const server = express()
 
 const whiteList = [
     process.env.FRONTEND_URL,
-    process.env.FRONTEND_PROD_URL
+    process.env.FRONTEND_PROD_URL,
+    process.env.FRONTEND_PROD_TWO_URL
 ]
 
 /* ************MIDDLEWARES***************** */
