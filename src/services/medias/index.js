@@ -6,10 +6,23 @@ import { v2 as cloudinary } from "cloudinary"
 import { CloudinaryStorage } from "multer-storage-cloudinary"
 import { validationResult } from "express-validator"
 import { getMedias, writeMedias } from "../../lib/fs-tools.js"
+import { mediasValidation, mediaReviewsValidation, checkValidationResult } from "./validation.js"
 
 const mediasRouter = express.Router()
 
 /* *****************SEARCH****************** */
+
+mediasRouter.get("/search", async (req, res, next)=>{
+    try {
+        console.log(req.query);
+        let Title = req.query.Title
+        const medias = await getMedias()
+        const filtered = medias.filter(media => media.Title.toLowerCase().includes(Title.toLowerCase()))
+        res.send(filtered)        
+    } catch (error) {
+        next(error)
+    }
+})
 
 /* *****************GET medias************** */
 
@@ -44,8 +57,10 @@ mediasRouter.get("/:id", async (req, res, next)=>{
 
 /* **********POST on media****************** */
 
-mediasRouter.post("/", async (req, res, next)=>{
+mediasRouter.post("/", mediasValidation, checkValidationResult, async (req, res, next)=>{
     try {
+        const errors = validationResult(req)
+        if(errors.isEmpty()){
         const newMedia = {
             ...req.body,
             _id:uniqid(),
@@ -58,14 +73,19 @@ mediasRouter.post("/", async (req, res, next)=>{
         res.status(201).send({_id: newMedia._id})
 
         
-    } catch (error) {
+    } 
+        else{
+             next(createError(400, {errorsList: errors}))
+            }
+        }
+    catch (error) {
         next(error)
     }
 })
 
 /* *****************PUT Media*************** */
 
-mediasRouter.put("/:id", async (req, res, next)=>{
+mediasRouter.put("/:id", mediasValidation, checkValidationResult,async (req, res, next)=>{
     try {
         const medias = await getMedias()
         const mediaIndex = medias.findIndex(med => med._id === req.params.id)
@@ -106,15 +126,170 @@ mediasRouter.delete("/:id", async (req, res, next)=>{
 
 /* *****************PDF upload************** */
 
-/* *****************Cover upload************ */
+/* **************************Cover upload************************ */
+
+/******************* CLOUDINARY******************/
+
+const cloudinaryStorage = new CloudinaryStorage({
+        cloudinary,
+        params:{
+        folder:"medias"
+        }
+    })
+
+const uploadOnCloudinary = multer({ storage: cloudinaryStorage}).single("mediaCover")
+
+/******************* POST IMAGE******************/
+
+mediasRouter.post("/:id/uploadCover", uploadOnCloudinary, async (req, res, next) => {
+    try {
+        const newMedia = {mediaCover: req.file.path}
+        const url = newMedia.mediaCover
+        const medias = await getMedias()
+        const media = medias.find(media => media._id === req.params.id)
+        if(media){
+            media.poster = url
+            await writeMedias(medias)
+        }
+        res.send(url)
+        
+    } catch (error) {
+        next(error)
+    }
+})
 
 /* *****************GET Reviews************* */
 
+mediasRouter.get("/:id/reviews", async (req, res, next)=>{
+    try {
+        const medias = await getMedias()
+        const media = medias.find(media => media._id === req.params.id)
+        if(media){
+            const mediaReviews = media.reviews
+            res.send(mediaReviews)
+        }
+        else{
+            next(createError(404,`media with id : ${req.params.id} not found`))
+        }
+        
+    } catch (error) {
+        next(error)
+    }
+})
+
 /* ***********GET single review************* */
+
+mediasRouter.get("/:id/reviews/:revId", async (req, res, next)=>{
+    try {
+        const medias = await getMedias()
+        const media = medias.find(media => media._id === req.params.id)
+        if(media){
+            const mediaReviews = media.reviews
+            if(mediaReviews){
+                const singleReview = mediaReviews.find( rev => rev._id === req.params.revId)
+                if(singleReview){
+
+                    res.send(singleReview)
+                }
+                else{
+                    next(createError(404,`review with id: ${req.params.revId} not found`))
+                }
+            }
+        }
+        else{
+            next(createError(404,`media with id : ${req.params.id} not found`))
+        }
+        
+    } catch (error) {
+        next(error)
+    }
+})
 
 /* *****************POST review************* */
 
+mediasRouter.post("/:id/reviews",mediaReviewsValidation, checkValidationResult,async (req, res, next)=>{
+    try {
+        const errors = validationResult(req)
+        if(errors.isEmpty()){       
+        const medias = await getMedias()
+        const media = medias.find(media => media._id === req.params.id)
+        let imdb = media.imdbID
+        if(media){
+            const mediaReviews = media.reviews
+            const review = {
+                ...req.body,
+                _id:uniqid(),
+                elementId:imdb,
+                createdAt: new Date()
+            }
+             mediaReviews.push(review)
+             await writeMedias(medias)
+             res.status(201).send({_id: review._id})
+        }
+    }
+        else{
+            next(createError(404,{errorsList:errors}))
+        }
+        
+    } catch (error) {
+        next(error)
+    }
+})
+
+/* *****************PUT review************* */
+
+mediasRouter.put("/:id/reviews/:revId",mediaReviewsValidation, checkValidationResult, async (req, res, next)=>{
+    try {
+        const medias = await getMedias()
+        const mediaIndex = medias.findIndex(media => media._id === req.params.id)
+        if(mediaIndex !== -1){
+            let media = medias[mediaIndex]
+            let mediaReviews = media.reviews
+            let mediaReviewIndex = mediaReviews.findIndex( rev => rev._id === req.params.revId)
+            let editReview = mediaReviews[mediaReviewIndex]
+            editReview = {
+                ...editReview,
+                ...req.body,
+                _id: req.params.revId,
+                updatedAt: new Date()
+            }
+            console.log(editReview);
+
+            mediaReviews[mediaReviewIndex] = editReview
+            await writeMedias(medias)
+            res.send(media)
+        }
+        else{
+            next(createError(400, 'media not found'))
+        }
+        
+    } catch (error) {
+        next(error)
+    }
+})
+
 /* **************DELETE review************** */
+
+mediasRouter.delete("/:id/reviews/:revId", async (req, res, next)=>{
+    try {
+        const medias = await getMedias()
+        const media = medias.find(media => media._id === req.params.id)
+        if(media){
+            const mediaReviews = media.reviews
+            const deleteReview = mediaReviews.findIndex(review => review._id === req.params.revId)
+            res.send(mediaReviews[deleteReview])
+            mediaReviews.splice(deleteReview,1)
+            await writeMedias(medias)
+            res.status(200)
+        }
+        else{
+            next(createError(400,`error deleting review`))
+        }
+        
+    } catch (error) {
+        next(error)
+    }
+})
 
 
 
