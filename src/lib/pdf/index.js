@@ -20,9 +20,8 @@ export const generatePDFReadableStream = (title,img,data1,data2) => {
     const printer = new PdfPrinter(fonts)
 
     const docDefinition = {
-        content:[          
+        content:[        
              
-            
                 {
                     text:title,
                     fontSize: 24,
@@ -41,6 +40,7 @@ export const generatePDFReadableStream = (title,img,data1,data2) => {
                 {
                     image:img,
                     width:500,
+                    height:500,
                     margin:[0,10,0,10]
                 },
             
