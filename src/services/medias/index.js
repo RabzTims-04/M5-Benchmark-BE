@@ -7,6 +7,10 @@ import { CloudinaryStorage } from "multer-storage-cloudinary"
 import { validationResult } from "express-validator"
 import { getMedias, writeMedias } from "../../lib/fs-tools.js"
 import { mediasValidation, mediaReviewsValidation, checkValidationResult } from "./validation.js"
+import { generatePDFReadableStream } from "../../lib/pdf/index.js"
+import { pipeline } from 'stream'
+import axios from 'axios'
+import {extname} from "path"
 
 const mediasRouter = express.Router()
 
@@ -41,7 +45,7 @@ mediasRouter.get("/", async (req, res, next)=>{
 mediasRouter.get("/:id", async (req, res, next)=>{
     try {
         const medias = await getMedias()
-        const media = medias.find(media => media._id === req.params.id)
+        const media = medias.find(media => media._imdbID === req.params.id)
         if(media){
 
             res.send(media)
@@ -63,14 +67,14 @@ mediasRouter.post("/", mediasValidation, checkValidationResult, async (req, res,
         if(errors.isEmpty()){
         const newMedia = {
             ...req.body,
-            _id:uniqid(),
+            _imdbID:uniqid(),
             reviews:[],
             createdAt: new Date()
         }
         const medias = await getMedias()
         medias.push(newMedia)
         await writeMedias(medias)
-        res.status(201).send({_id: newMedia._id})
+        res.status(201).send({_imdbID: newMedia._imdbID})
 
         
     } 
@@ -88,13 +92,13 @@ mediasRouter.post("/", mediasValidation, checkValidationResult, async (req, res,
 mediasRouter.put("/:id", mediasValidation, checkValidationResult,async (req, res, next)=>{
     try {
         const medias = await getMedias()
-        const mediaIndex = medias.findIndex(med => med._id === req.params.id)
+        const mediaIndex = medias.findIndex(med => med._imdbID === req.params.id)
         if(mediaIndex !== -1){
             let media = medias[mediaIndex]
             media = {
                 ...media,
                 ...req.body,
-                _id: req.params.id,
+                _imdbID: req.params.id,
                 updatedAt: new Date()
             }
             medias[mediaIndex] = media
@@ -115,7 +119,7 @@ mediasRouter.put("/:id", mediasValidation, checkValidationResult,async (req, res
 mediasRouter.delete("/:id", async (req, res, next)=>{
     try {
         const medias = await getMedias()
-        const remainingMedias = medias.filter(med => med._id !== req.params.id)
+        const remainingMedias = medias.filter(med => med._imdbID !== req.params.id)
         await writeMedias(remainingMedias)
         res.status(200).send(`media with id: ${req.params.id} is deleted successfully`)
         
@@ -125,6 +129,38 @@ mediasRouter.delete("/:id", async (req, res, next)=>{
 })
 
 /* *****************PDF upload************** */
+
+mediasRouter.get("/:id/pdf", async (req, res, next) => {
+    try {
+
+        const medias = await getMedias()
+        const media = medias.find(media => media._imdbID === req.params.id)
+        res.setHeader("Content-Disposition","attachment; filename = media.pdf")
+        if(media){
+            const content = media.reviews
+            const response = await axios.get(media.Poster,
+                {responseType:'arraybuffer'}
+                )
+            const mediaCoverURLParts =  media.Poster.split('/')
+            const fileName = mediaCoverURLParts[mediaCoverURLParts.length-1]
+            const [id, extension] = fileName.split('.')
+            const base64 = Buffer.from(response.data).toString('base64')
+           /*  const base64 = response.data.toString("base64") */
+            const base64Image = `data:image/${extension};base64,${base64}`
+
+            const source = await generatePDFReadableStream(media.Title, base64Image, media.Year,content)
+            const destination = res
+            pipeline(source, destination, err => {
+                if(err){
+                    next(err)
+                }
+            })
+        }   
+        
+    } catch (error) {
+        next(error)
+    }
+})
 
 /* **************************Cover upload************************ */
 
@@ -146,9 +182,9 @@ mediasRouter.post("/:id/uploadCover", uploadOnCloudinary, async (req, res, next)
         const newMedia = {mediaCover: req.file.path}
         const url = newMedia.mediaCover
         const medias = await getMedias()
-        const media = medias.find(media => media._id === req.params.id)
+        const media = medias.find(media => media._imdbID === req.params.id)
         if(media){
-            media.poster = url
+            media.Poster = url
             await writeMedias(medias)
         }
         res.send(url)
@@ -163,7 +199,7 @@ mediasRouter.post("/:id/uploadCover", uploadOnCloudinary, async (req, res, next)
 mediasRouter.get("/:id/reviews", async (req, res, next)=>{
     try {
         const medias = await getMedias()
-        const media = medias.find(media => media._id === req.params.id)
+        const media = medias.find(media => media._imdbID === req.params.id)
         if(media){
             const mediaReviews = media.reviews
             res.send(mediaReviews)
@@ -182,7 +218,7 @@ mediasRouter.get("/:id/reviews", async (req, res, next)=>{
 mediasRouter.get("/:id/reviews/:revId", async (req, res, next)=>{
     try {
         const medias = await getMedias()
-        const media = medias.find(media => media._id === req.params.id)
+        const media = medias.find(media => media._imdbID === req.params.id)
         if(media){
             const mediaReviews = media.reviews
             if(mediaReviews){
@@ -212,8 +248,8 @@ mediasRouter.post("/:id/reviews",mediaReviewsValidation, checkValidationResult,a
         const errors = validationResult(req)
         if(errors.isEmpty()){       
         const medias = await getMedias()
-        const media = medias.find(media => media._id === req.params.id)
-        let imdb = media.imdbID
+        const media = medias.find(media => media._imdbID === req.params.id)
+        let imdb = media._imdbID
         if(media){
             const mediaReviews = media.reviews
             const review = {
@@ -241,7 +277,7 @@ mediasRouter.post("/:id/reviews",mediaReviewsValidation, checkValidationResult,a
 mediasRouter.put("/:id/reviews/:revId",mediaReviewsValidation, checkValidationResult, async (req, res, next)=>{
     try {
         const medias = await getMedias()
-        const mediaIndex = medias.findIndex(media => media._id === req.params.id)
+        const mediaIndex = medias.findIndex(media => media._imdbID === req.params.id)
         if(mediaIndex !== -1){
             let media = medias[mediaIndex]
             let mediaReviews = media.reviews
@@ -273,7 +309,7 @@ mediasRouter.put("/:id/reviews/:revId",mediaReviewsValidation, checkValidationRe
 mediasRouter.delete("/:id/reviews/:revId", async (req, res, next)=>{
     try {
         const medias = await getMedias()
-        const media = medias.find(media => media._id === req.params.id)
+        const media = medias.find(media => media._imdbID === req.params.id)
         if(media){
             const mediaReviews = media.reviews
             const deleteReview = mediaReviews.findIndex(review => review._id === req.params.revId)

@@ -6,8 +6,6 @@ export const mediasValidation = [
 
     body("Year").exists().withMessage("Year is mandatory").isNumeric().withMessage("Year should be a numeric"),
 
-    body("imdbID").exists().withMessage("imdbID is mandatory"),
-
     body("Type").exists().withMessage("Type is mandatory").isString().withMessage("Type should be a string"),
 
     body("Poster").exists().withMessage("Poster is mandatory")
