@@ -10,13 +10,23 @@ const PORT = process.env.PORT
 const server = express()
 
 const whiteList = [
-    process.env.FRONTEND_URL
+    process.env.FRONTEND_URL,
+    process.env.FRONTEND_PROD_URL
 ]
 
 /* ************MIDDLEWARES***************** */
 
 server.use(express.json())
-server.use(cors())
+server.use(cors({
+    origin:(origin, callback) =>{
+        if(!origin || whiteList.indexOf(origin) !== -1){
+            callback(null, true)
+        }
+        else{
+            callback(new Error('not allowed by cors'))
+        }
+    }
+}))
 
 /* ************ENDPOINTS******************* */
 
