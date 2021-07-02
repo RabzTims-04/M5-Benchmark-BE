@@ -16,16 +16,7 @@ const whiteList = [
 /* ************MIDDLEWARES***************** */
 
 server.use(express.json())
-server.use(cors({
-    origin:(origin, callback) =>{
-        if(!origin || whiteList.indexOf(origin) !== -1){
-            callback(null, true)
-        }
-        else{
-            callback(new Error('not allowed by cors'))
-        }
-    }
-}))
+server.use(cors())
 
 /* ************ENDPOINTS******************* */
 
